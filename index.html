@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>IBONIRIUM · Cloud Barometer · Mini</title>
+
+<style>
+body{
+  margin:0;
+  height:100vh;
+  background:#0a0e14;
+  font-family: monospace;
+  color:#aaffcc;
+  overflow:hidden;
+}
+
+/* без рамок, чиста голограма */
+#device{
+  position:fixed;
+  top:16px;
+  left:16px;
+  width:280px;
+  height:220px;
+  pointer-events:none;
+}
+
+canvas{
+  position:absolute;
+  inset:0;
+}
+
+#info{
+  position:absolute;
+  top:8px;
+  left:12px;
+  font-size:11px;
+  line-height:1.38;
+  color:#c8ffdc;
+  text-shadow:0 0 4px rgba(0,0,0,0.85);
+}
+
+#info b{ color:#6fffa0; }
+
+#title{
+  font-size:13px;
+  color:#9affe0;
+  margin-bottom:4px;
+  letter-spacing:0.6px;
+}
+</style>
+</head>
+
+<body>
+
+<div id="device">
+  <canvas id="cloud"></canvas>
+  <div id="info">
+    <div id="title">IBONIRIUM · CLOUD BAROMETER</div>
+    <div>Weather: <b><span id="wcode">–</span></b></div>
+    <div>Cloud cover: <b><span id="cc">–</span>%</b></div>
+    <div>Humidity: <b><span id="hum">–</span>%</b></div>
+    <div>Wind: <b><span id="wind">–</span> m/s</b></div>
+    <div>Pressure: <b><span id="pres">–</span> hPa</b></div>
+    <div>Visibility: <b><span id="vis">–</span> km</b></div>
+    <div>Cloud factor: <b><span id="cf">–</span></b></div>
+  </div>
+</div>
+
+<script>
+// ==================================================
+const canvas = document.getElementById('cloud');
+const ctx = canvas.getContext('2d');
+
+canvas.width = 280;
+canvas.height = 220;
+
+// ==================================================
+let cloudCover = 0;
+let humidity = 50;
+let weatherCode = 0;
+let windSpeed = 0;
+let windDir = 0;
+let pressure = 1013;
+let visibility = 10;
+let temperature = 10;
+
+let cloudFactor = 1;
+let baseColor = {r:240,g:245,b:255};
+
+// ==================================================
+function noise(x,y){
+  return Math.sin(x*17.31 + y*91.77)*0.5 + 0.5;
+}
+
+// ==================================================
+function getCloudColor(code){
+  if(code===0) baseColor={r:252,g:252,b:255};
+  else if(code<=2) baseColor={r:240,g:246,b:255};
+  else if(code<=3) baseColor={r:228,g:235,b:255};
+  else if(code<50) baseColor={r:220,g:225,b:255};
+  else if(code<60) baseColor={r:205,g:220,b:255};
+  else baseColor={r:190,g:210,b:255};
+}
+
+// ==================================================
+function drawMiniCloud(){
+  const t = Date.now()*0.0005;
+  const w = canvas.width;
+  const h = canvas.height;
+  const cx = w*0.52;
+  const cy = h*0.5;
+
+  ctx.clearRect(0,0,w,h);
+
+  const layers = 5;
+  const windX = Math.cos(windDir*Math.PI/180)*windSpeed*0.06;
+  const windY = Math.sin(windDir*Math.PI/180)*windSpeed*0.04;
+
+  const baseSize =
+    64 +
+    cloudCover*0.4 +
+    (1015-pressure)*0.9;
+
+  const verticalStretch = 1 + (temperature-5)/40;
+  const contrast = Math.max(0.6, visibility/10);
+
+  for(let i=0;i<layers;i++){
+    const scale = 0.009 + i*0.003;
+    const offset = t*(0.5+i*0.25);
+
+    ctx.globalAlpha = (0.22+i*0.1)*(humidity/120+0.5);
+
+    for(let y=0;y<h;y+=3){
+      for(let x=0;x<w;x+=3){
+        const nx = (x-cx)*scale + windX*t;
+        const ny = (y-cy)*scale*verticalStretch + windY*t;
+
+        let n =
+          noise(nx+offset,ny) * 0.6 +
+          noise(nx*2.1,ny*2.1+t) * 0.4;
+
+        const dist =
+          Math.hypot(x-cx,(y-cy)/verticalStretch)/baseSize;
+
+        let falloff = Math.max(0,1-dist*dist*1.35);
+        falloff = Math.pow(falloff,1.2)*contrast;
+
+        if(n*falloff>0.38){
+          const br = n*1.2;
+          ctx.fillStyle = `rgba(
+            ${Math.min(255,baseColor.r*br)},
+            ${Math.min(255,baseColor.g*br)},
+            ${Math.min(255,baseColor.b*br)},
+            ${falloff}
+          )`;
+          ctx.fillRect(x,y,3,3);
+        }
+      }
+    }
+  }
+
+  ctx.globalAlpha=1;
+}
+
+// ==================================================
+async function updateWeather(){
+  try{
+    const res = await fetch(
+      'https://api.open-meteo.com/v1/forecast?latitude=50.45&longitude=30.52&current=' +
+      'relative_humidity_2m,cloud_cover,weather_code,' +
+      'wind_speed_10m,wind_direction_10m,' +
+      'surface_pressure,visibility,temperature_2m'
+    );
+
+    const d = await res.json();
+    const c = d.current;
+
+    weatherCode = c.weather_code;
+    cloudCover  = c.cloud_cover ?? 0;
+    humidity    = c.relative_humidity_2m ?? 50;
+    windSpeed   = c.wind_speed_10m ?? 0;
+    windDir     = c.wind_direction_10m ?? 0;
+    pressure    = c.surface_pressure ?? 1013;
+    visibility  = (c.visibility ?? 10000)/1000;
+    temperature = c.temperature_2m ?? 10;
+
+    cloudFactor =
+      0.6 +
+      cloudCover/45 +
+      humidity/200 +
+      windSpeed/18 +
+      Math.abs(1013-pressure)/60;
+
+    getCloudColor(weatherCode);
+
+    wcode.textContent = weatherCode;
+    cc.textContent = cloudCover;
+    hum.textContent = humidity;
+    wind.textContent = windSpeed.toFixed(1);
+    pres.textContent = pressure.toFixed(0);
+    vis.textContent = visibility.toFixed(1);
+    cf.textContent = cloudFactor.toFixed(2);
+
+  }catch(e){
+    console.warn("weather error",e);
+  }
+}
+
+updateWeather();
+setInterval(updateWeather,15*60*1000);
+
+// ==================================================
+function loop(){
+  drawMiniCloud();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+
+</body>
+</html>
