@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>IBONIRIUM · 3D Cloud Storm</title>
+<title>IBONIRIUM · 3D Cloud + Star Indicators</title>
+
 <style>
-  body { margin: 0; overflow: hidden; background: #0a0e14; }
+  body { margin:0; overflow:hidden; background:#0a0e14; }
   #info{
     position:absolute; top:16px; left:16px; font-family: monospace;
     color:#aaffcc; font-size:12px; line-height:1.4; text-shadow:0 0 4px #000;
@@ -20,6 +21,7 @@
   <div>Humidity: <b><span id="hum">–</span>%</b></div>
   <div>Wind: <b><span id="wind">–</span> m/s</b></div>
   <div>Visibility: <b><span id="vis">–</span> km</b></div>
+  <div>Solar index: <b><span id="solar">–</span></b></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r150/three.min.js"></script>
@@ -44,7 +46,7 @@ controls.minDistance = 50;
 controls.maxDistance = 500;
 
 // ==================================================
-// Частинки хмари
+// 3D Хмара
 const particleCount = 12000;
 let particles = new THREE.BufferGeometry();
 let positions = new Float32Array(particleCount*3);
@@ -86,7 +88,24 @@ let flash = new THREE.PointLight(0xffffff,0,400);
 scene.add(flash);
 
 // ==================================================
+// Показники-зірки
+function createStarIndicator(x, y, z){
+  const geometry = new THREE.IcosahedronGeometry(5,1);
+  const material = new THREE.MeshStandardMaterial({color:0xffff33, emissive:0xffff33, emissiveIntensity:1});
+  const star = new THREE.Mesh(geometry, material);
+  star.position.set(x, y, z);
+  scene.add(star);
+  return star;
+}
+
+let star1 = createStarIndicator(-50,-80,0);
+let star2 = createStarIndicator(50,-80,0);
+
+let ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+scene.add(ambientLight);
+
 let windSpeed=0, windDir=0, cloudCover=50, humidity=50, visibility=10, weatherCode=0;
+let solarIndex=0;
 
 // ==================================================
 // Турбулентні локальні вихори
@@ -111,7 +130,7 @@ function applyCyclones(t){
 }
 
 // ==================================================
-// Оновлення погоди
+// Оновлення погоди та сонця
 async function updateWeather(){
   try{
     const r = await fetch(
@@ -128,15 +147,32 @@ async function updateWeather(){
     windDir=c.wind_direction_10m??0;
     visibility=(c.visibility??10000)/1000;
 
-    // оновлення UI
+    // UI
     wcode.textContent = weatherCode;
     cc.textContent = cloudCover;
     hum.textContent = humidity;
     wind.textContent = windSpeed.toFixed(1);
     vis.textContent = visibility.toFixed(1);
+
   }catch(e){ console.warn(e); }
+
+  // Симуляція сонячного індексу (API NOAA або реальне можна підключити)
+  try{
+    const solar = Math.random()*10; // тимчасово випадкове
+    solarIndex = solar;
+    solarEl.textContent = solarIndex.toFixed(1);
+
+    // колір зірок змінюємо
+    const color1 = new THREE.Color(`hsl(${50 + solarIndex*12}, 100%, 50%)`);
+    const color2 = new THREE.Color(`hsl(${150 + solarIndex*12}, 100%, 50%)`);
+    star1.material.color.copy(color1);
+    star1.material.emissive.copy(color1);
+    star2.material.color.copy(color2);
+    star2.material.emissive.copy(color2);
+  }catch(e){}
 }
 
+const solarEl = document.getElementById("solar");
 updateWeather();
 setInterval(updateWeather,15*60*1000);
 
@@ -175,7 +211,6 @@ function animate(){
 }
 animate();
 
-// ==================================================
 window.addEventListener('resize',()=>{
   camera.aspect=window.innerWidth/window.innerHeight;
   camera.updateProjectionMatrix();
