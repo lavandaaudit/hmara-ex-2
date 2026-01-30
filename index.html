@@ -3,17 +3,18 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>IBONIRIUM · Cloud Barometer · Atmos</title>
+<title>IBONIRIUM · Cloud Barometer · Turbulence</title>
 
 <style>
 body{
   margin:0;
   height:100vh;
   background:#0a0e14;
-  font-family:monospace;
+  font-family: monospace;
   color:#aaffcc;
   overflow:hidden;
 }
+
 #device{
   position:fixed;
   top:16px;
@@ -22,85 +23,116 @@ body{
   height:220px;
   pointer-events:none;
 }
+
 canvas{ position:absolute; inset:0; }
+
 #info{
   position:absolute;
-  top:8px; left:12px;
+  top:8px;
+  left:12px;
   font-size:11px;
-  line-height:1.35;
-  text-shadow:0 0 4px #000;
+  line-height:1.38;
+  color:#c8ffdc;
+  text-shadow:0 0 4px rgba(0,0,0,0.85);
 }
-#title{ font-size:13px; color:#9affe0; margin-bottom:4px; }
-b{ color:#6fffa0; }
+
+#info b{ color:#6fffa0; }
+
+#title{
+  font-size:13px;
+  color:#9affe0;
+  margin-bottom:4px;
+  letter-spacing:0.6px;
+}
 </style>
 </head>
 
 <body>
 
 <div id="device">
-<canvas id="cloud"></canvas>
-<div id="info">
-<div id="title">IBONIRIUM · ATMOSPHERIC NODE</div>
-<div>Weather: <b id="wcode">–</b></div>
-<div>Cloud: <b id="cc">–</b>%</div>
-<div>Humidity: <b id="hum">–</b>%</div>
-<div>Wind: <b id="wind">–</b> m/s</div>
-<div>Pressure: <b id="pres">–</b> hPa</div>
-<div>Visibility: <b id="vis">–</b> km</div>
-<div>Cloud factor: <b id="cf">–</b></div>
-</div>
+  <canvas id="cloud"></canvas>
+  <div id="info">
+    <div id="title">IBONIRIUM · CLOUD BAROMETER</div>
+    <div>Weather: <b><span id="wcode">–</span></b></div>
+    <div>Cloud cover: <b><span id="cc">–</span>%</b></div>
+    <div>Humidity: <b><span id="hum">–</span>%</b></div>
+    <div>Wind: <b><span id="wind">–</span> m/s</b></div>
+    <div>Visibility: <b><span id="vis">–</span> km</b></div>
+    <div>Cloud factor: <b><span id="cf">–</span></b></div>
+  </div>
 </div>
 
 <script>
-const canvas=document.getElementById("cloud");
-const ctx=canvas.getContext("2d");
-canvas.width=280; canvas.height=220;
+// ==================================================
+const canvas = document.getElementById('cloud');
+const ctx = canvas.getContext('2d');
+canvas.width = 280;
+canvas.height = 220;
 
-// ================================
+// ==================================================
 let cloudCover=0, humidity=50, weatherCode=0;
-let windSpeed=0, windDir=0, pressure=1013;
-let visibility=10, temperature=10;
-let baseColor={r:235,g:245,b:255};
+let windSpeed=0, windDir=0, visibility=10;
+let cloudFactor=1, temperature=10;
 
-// ================================
-const noise=(x,y)=>Math.sin(x*17.3+y*91.7)*0.5+0.5;
+let baseColor={r:240,g:245,b:255};
 
-// ================================
+// ==================================================
+function noise(x,y){
+  return Math.sin(x*17.13 + y*91.77 + Math.sin(y*4))*0.5+0.5;
+}
+
+// ==================================================
+function getCloudColor(code){
+  if(code===0) baseColor={r:252,g:252,b:255};
+  else if(code<=3) baseColor={r:235,g:240,b:255};
+  else if(code<50) baseColor={r:220,g:225,b:255};
+  else baseColor={r:200,g:215,b:255};
+}
+
+// ==================================================
 function drawCloud(){
-  const t=Date.now()*0.00045;
-  const w=canvas.width,h=canvas.height;
+  const t = Date.now()*0.0005;
+  const w=canvas.width, h=canvas.height;
   const cx=w*0.52, cy=h*0.5;
 
   ctx.clearRect(0,0,w,h);
 
-  const windX=Math.cos(windDir*Math.PI/180)*windSpeed*0.06;
-  const windY=Math.sin(windDir*Math.PI/180)*windSpeed*0.04;
+  const windX = Math.cos(windDir*Math.PI/180)*windSpeed*0.08;
+  const windY = Math.sin(windDir*Math.PI/180)*windSpeed*0.05;
 
-  const turbulence=Math.max(0,(windSpeed-6)/6);
-  const layers=5;
-  const baseSize=62+cloudCover*0.45+(1015-pressure);
+  const turbulence = Math.max(0,(windSpeed-6)/6);
+  const fogFactor = Math.max(0,1-visibility/5);
+
+  const baseSize = 64 + cloudCover*0.45;
+  const layers = 5;
 
   for(let i=0;i<layers;i++){
-    ctx.globalAlpha=(0.18+i*0.1)*(humidity/120+0.4);
-    const scale=0.009+i*0.003;
+    const scale = 0.009 + i*0.003;
+    ctx.globalAlpha=(0.22+i*0.1)*(humidity/120+0.5);
 
     for(let y=0;y<h;y+=3){
       for(let x=0;x<w;x+=3){
-        let nx=(x-cx)*scale+windX*t;
-        let ny=(y-cy)*scale+windY*t;
+        let nx=(x-cx)*scale + windX*t;
+        let ny=(y-cy)*scale + windY*t;
 
-        // 🌀 турбулентні розриви
-        nx+=noise(nx+t,ny)*turbulence*1.5;
-        ny+=noise(nx*2,ny+t)*turbulence;
+        if(turbulence>0){
+          nx += noise(ny*2,t)*turbulence*0.8;
+          ny += noise(nx*2,t+10)*turbulence*0.8;
+        }
 
-        let n=noise(nx+t,ny)*0.6+noise(nx*2.2,ny*2.2)*0.4;
+        let n =
+          noise(nx+t,ny)*0.6 +
+          noise(nx*2.2,ny*2.2+t)*0.4;
 
         const dist=Math.hypot(x-cx,y-cy)/baseSize;
-        let falloff=Math.max(0,1-dist*dist*1.4);
-        falloff=Math.pow(falloff,1.2);
+        let falloff=Math.max(0,1-dist*dist*1.35);
 
-        // розриви
-        if(turbulence>0.2 && noise(nx*6,ny*6)>0.85) falloff*=0.25;
+        if(turbulence>0){
+          const tear=noise(nx*3+t,ny*3)*turbulence;
+          falloff-=tear*0.35;
+        }
+
+        falloff*=Math.max(0.4,1-fogFactor*0.6);
 
         if(n*falloff>0.38){
           const br=n*1.2;
@@ -115,95 +147,96 @@ function drawCloud(){
       }
     }
   }
+
+  ctx.globalAlpha=1;
+
+  drawFog(fogFactor,t);
+  drawRain(t);
+}
+
+// ==================================================
+function drawFog(f,t){
+  if(f<=0) return;
+  ctx.globalAlpha=0.15*f;
+  ctx.fillStyle='rgba(220,235,255,0.6)';
+  ctx.beginPath();
+  ctx.ellipse(
+    canvas.width/2,
+    canvas.height/2+Math.sin(t)*8,
+    canvas.width*0.55,
+    canvas.height*0.35,
+    0,0,Math.PI*2
+  );
+  ctx.fill();
   ctx.globalAlpha=1;
 }
 
-// ================================
-// 🌧️ Дощ
-function drawRain(){
-  ctx.strokeStyle="rgba(170,220,255,0.25)";
+// ==================================================
+function drawRain(t){
+  if(weatherCode<51) return;
+
+  const count = Math.min(140,(cloudCover+humidity)*0.9);
+  const angle = windDir*Math.PI/180;
+  const vx = Math.sin(angle)*windSpeed*1.4;
+  const vy = Math.cos(angle)*windSpeed*3.2;
+
+  ctx.strokeStyle='rgba(180,220,255,0.35)';
   ctx.lineWidth=1;
-  for(let i=0;i<60;i++){
-    const x=Math.random()*canvas.width;
-    const y=Math.random()*canvas.height;
+
+  for(let i=0;i<count;i++){
+    const x=(i*17 + t*90)%canvas.width;
+    const y=(i*47 + t*130)%canvas.height;
     ctx.beginPath();
     ctx.moveTo(x,y);
-    ctx.lineTo(x+windSpeed*0.8,y+10+windSpeed*2);
+    ctx.lineTo(x+vx,y+vy);
     ctx.stroke();
   }
 }
 
-// 🌫️ Туман
-function drawFog(){
-  ctx.fillStyle="rgba(220,240,255,0.06)";
-  for(let i=0;i<20;i++){
-    ctx.beginPath();
-    ctx.arc(
-      Math.random()*canvas.width,
-      Math.random()*canvas.height,
-      30+Math.random()*40,0,Math.PI*2
-    );
-    ctx.fill();
-  }
-}
-
-// 🌩️ Електричні імпульси
-function drawLightning(){
-  if(Math.random()>0.02) return;
-  ctx.strokeStyle="rgba(200,220,255,0.9)";
-  ctx.lineWidth=1.5;
-  ctx.beginPath();
-  let x=canvas.width*0.5;
-  let y=canvas.height*0.25;
-  ctx.moveTo(x,y);
-  for(let i=0;i<6;i++){
-    x+=Math.random()*20-10;
-    y+=15+Math.random()*10;
-    ctx.lineTo(x,y);
-  }
-  ctx.stroke();
-}
-
-// ================================
+// ==================================================
 async function updateWeather(){
-  const r=await fetch(
-    "https://api.open-meteo.com/v1/forecast?latitude=50.45&longitude=30.52&current=" +
-    "relative_humidity_2m,cloud_cover,weather_code," +
-    "wind_speed_10m,wind_direction_10m,surface_pressure,visibility,temperature_2m"
+  const r = await fetch(
+    'https://api.open-meteo.com/v1/forecast?latitude=50.45&longitude=30.52&current='+
+    'relative_humidity_2m,cloud_cover,weather_code,'+
+    'wind_speed_10m,wind_direction_10m,visibility,temperature_2m'
   );
-  const c=(await r.json()).current;
+  const d=await r.json();
+  const c=d.current;
 
   weatherCode=c.weather_code;
-  cloudCover=c.cloud_cover;
-  humidity=c.relative_humidity_2m;
-  windSpeed=c.wind_speed_10m;
-  windDir=c.wind_direction_10m;
-  pressure=c.surface_pressure;
-  visibility=c.visibility/1000;
-  temperature=c.temperature_2m;
+  cloudCover=c.cloud_cover??0;
+  humidity=c.relative_humidity_2m??50;
+  windSpeed=c.wind_speed_10m??0;
+  windDir=c.wind_direction_10m??0;
+  visibility=(c.visibility??10000)/1000;
+  temperature=c.temperature_2m??10;
 
-  cf.textContent=(0.6+cloudCover/45+windSpeed/15).toFixed(2);
+  cloudFactor=
+    0.6+
+    cloudCover/45+
+    humidity/200+
+    windSpeed/16;
+
+  getCloudColor(weatherCode);
+
   wcode.textContent=weatherCode;
   cc.textContent=cloudCover;
   hum.textContent=humidity;
   wind.textContent=windSpeed.toFixed(1);
-  pres.textContent=pressure.toFixed(0);
   vis.textContent=visibility.toFixed(1);
+  cf.textContent=cloudFactor.toFixed(2);
 }
+
 updateWeather();
 setInterval(updateWeather,15*60*1000);
 
-// ================================
+// ==================================================
 function loop(){
   drawCloud();
-
-  if(weatherCode>=50 && weatherCode<=82) drawRain();
-  if(weatherCode>=45 && weatherCode<=48 || visibility<3) drawFog();
-  if(weatherCode>=95) drawLightning();
-
   requestAnimationFrame(loop);
 }
 loop();
 </script>
+
 </body>
 </html>
